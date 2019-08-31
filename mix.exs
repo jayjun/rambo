@@ -1,0 +1,41 @@
+defmodule Rambo.MixProject do
+  use Mix.Project
+
+  @version "0.1.0"
+  @repo_url "https://github.com/jayjun/rambo"
+
+  def project do
+    [
+      app: :rambo,
+      version: @version,
+      elixir: "~> 1.9",
+      name: "Rambo",
+      description: "Run your command. Send EOF. Get output.",
+      deps: deps(),
+      package: [
+        exclude_patterns: ["priv/target"],
+        licenses: ["MIT"],
+        links: %{"GitHub" => @repo_url}
+      ],
+      docs: [
+        source_ref: @version,
+        source_url: @repo_url,
+        main: "Rambo",
+        api_reference: false,
+        extra_section: []
+      ]
+    ]
+  end
+
+  def application do
+    [
+      extra_applications: []
+    ]
+  end
+
+  defp deps do
+    [
+      {:ex_doc, "~> 0.21", only: [:docs], runtime: false}
+    ]
+  end
+end
