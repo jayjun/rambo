@@ -7,13 +7,13 @@ Rambo has one mission. Start your program, pipe standard input,
 
 ```elixir
 Rambo.run("cat", in: "hello")
-{:ok, %Rambo{status: 0, out: "hello"}}
+{:ok, %Rambo{out: "hello"}}
 
 Rambo.run("echo", ["-n", "world"])
-{:ok, %Rambo{status: 0, out: "world"}}
+{:ok, %Rambo{out: "world"}}
 
 Rambo.run("ls") |> Rambo.run("sort") |> Rambo.run("head")
-{:ok, %Rambo{status: 0, out: "bar\nbaz\nfoo\n"}}
+{:ok, %Rambo{out: "bar\nbaz\nfoo\n"}}
 ```
 
 One mission, one function.
@@ -72,22 +72,32 @@ If you don’t need to pipe standard input to your external program, just use
 
 ### Porcelain
 
-To make [Porcelain](https://github.com/alco/porcelain) useful, you must install
-its shim [Goon](https://github.com/alco/goon) separately. Rambo ships with the
-required native binaries.
+[Porcelain](https://github.com/alco/porcelain) cannot send EOF to trigger output
+by default. The [Goon](https://github.com/alco/goon) driver must be installed
+separately to add this capability. Rambo ships with the required native
+binaries.
 
-Goon is written in Go, a multi-threaded runtime with a garbage collector. To be
+Goon is written in Go, a multithreaded runtime with a garbage collector. To be
 as lightweight as possible, Rambo’s shim is written in Rust. Single threaded, no
 garbage collector, no runtime overhead.
 
-Also, word on the street says it’s [abandoned](https://github.com/alco/porcelain/issues/50)
-and has [zombies](https://github.com/alco/porcelain/issues/13).
+Most importantly, Goon currently [leaks](https://github.com/alco/porcelain/issues/13)
+processes. This isn’t an intractable problem, in fact writing a new driver to
+replace Goon should fix it. But Porcelain appears to be
+[abandoned](https://github.com/alco/porcelain/issues/50) and I need this in
+production so effort went into creating Rambo.
 
 ### erlexec
 
 [erlexec](https://github.com/saleyn/erlexec) is great if you want fine grain
-control over external programs. Choose erlexec if you have many long-running
-commands that you interact with in complex ways.
+control over external programs.
+
+Each external OS process is mirrored as an
+Erlang process, so you get asynchronous and bidirectional communication. You can
+kill your OS processes with any signal or monitor them for termination, among
+many powerful features.
+
+Choose erlexec if you want a kitchen sink solution.
 
 ## Installation
 
