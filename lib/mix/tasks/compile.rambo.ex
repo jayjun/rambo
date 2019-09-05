@@ -2,46 +2,40 @@ defmodule Mix.Tasks.Compile.Rambo do
   @moduledoc false
   use Mix.Task.Compiler
 
-  defmacro platform_specific(do: do_block, else: else_block) do
-    %{mac: mac, linux: linux, windows: windows} = Map.new(do_block)
-
-    quote do
-      case List.to_string(:erlang.system_info(:system_architecture)) do
-        "x86_64-apple-darwin" <> _ ->
-          unquote(mac)
-
-        "x86_64-" <> system ->
-          if String.contains?(system, "linux") do
-            unquote(linux)
-          else
-            unquote(else_block)
-          end
-
-        "win32" ->
-          unquote(windows)
-
-        _ ->
-          unquote(else_block)
-      end
-    end
-  end
-
   # rust targets
   @mac "x86_64-apple-darwin"
   @linux "x86_64-unknown-linux-musl"
   @windows "x86_64-pc-windows-gnu"
 
-  def executable(@mac), do: "rambo-mac"
-  def executable(@linux), do: "rambo-linux"
-  def executable(@windows), do: "rambo.exe"
-  def executable(_target), do: "rambo"
+  @priv_dir List.to_string(:code.priv_dir(:rambo))
 
-  def executable do
-    platform_specific do
-      [mac: executable(@mac), linux: executable(@linux), windows: executable(@windows)]
-    else
-      executable(:self_compiled)
+  @filenames %{
+    @mac => "rambo-mac",
+    @linux => "rambo-linux",
+    @windows => "rambo.exe",
+    :custom => "rambo"
+  }
+
+  @environment List.to_string(:erlang.system_info(:system_architecture))
+
+  filename =
+    cond do
+      String.starts_with?(@environment, "x86_64-apple-darwin") ->
+        @filenames[@mac]
+
+      String.starts_with?(@environment, "x86_64") and String.contains?(@environment, "linux") ->
+        @filenames[@linux]
+
+      @environment == "win32" ->
+        @filenames[@windows]
+
+      true ->
+        @filenames.custom
     end
+
+  @filename filename
+  def find_rambo do
+    Path.join(@priv_dir, @filename)
   end
 
   def run(["bundled"]) do
@@ -55,25 +49,50 @@ defmodule Mix.Tasks.Compile.Rambo do
   end
 
   def run(_args) do
-    compile_locally()
+    executable = find_rambo()
+    unless File.exists?(executable), do: compile!()
+
+    if Application.get_env(:rambo, :purge, false) do
+      remove_unused_binaries(executable)
+    end
+
+    :ok
   end
 
-  defp priv_dir do
-    List.to_string(:code.priv_dir(:rambo))
+  defp remove_unused_binaries(executable) do
+    filename = Path.basename(executable)
+
+    @filenames
+    |> Enum.map(fn {_target, filename} -> filename end)
+    |> Enum.reject(&(&1 == filename))
+    |> Enum.map(&Path.join(@priv_dir, &1))
+    |> Enum.each(&File.rm/1)
   end
 
-  defp compile(target \\ nil) do
-    priv_dir = priv_dir()
+  defp compile! do
+    if System.find_executable("cargo") do
+      compile(:custom)
+    else
+      raise """
+      Rambo does not ship with binaries for your environment.
 
+          #{@environment} detected
+
+      Install the Rust compiler so a binary can be prepared for you.
+      """
+    end
+  end
+
+  defp compile(target) do
     args =
       case target do
-        nil -> ["build", "--release"]
+        :custom -> ["build", "--release"]
         target -> ["build", "--release", "--target", target]
       end
 
-    case System.cmd("cargo", args, cd: priv_dir) do
+    case System.cmd("cargo", args, cd: @priv_dir) do
       {_output, 0} ->
-        move_executable(priv_dir, target)
+        move_executable(target)
         :ok
 
       {output, _exit_status} ->
@@ -82,29 +101,28 @@ defmodule Mix.Tasks.Compile.Rambo do
   end
 
   defp compile_in_docker(target) do
-    priv_dir = priv_dir()
     tag = "rambo/" <> target
     build = ["build", "--tag", tag, "--file", "Dockerfile." <> target, "."]
 
-    with {_output, 0} <- System.cmd("docker", build, cd: priv_dir),
-         {_output, 0} <- System.cmd("docker", ["run", "--volume", priv_dir <> ":/app", tag]) do
-      move_executable(priv_dir, target)
+    with {_output, 0} <- System.cmd("docker", build, cd: @priv_dir),
+         {_output, 0} <- System.cmd("docker", ["run", "--volume", @priv_dir <> ":/app", tag]) do
+      move_executable(target)
       :ok
     else
       {output, _exit_status} -> {:error, [output]}
     end
   end
 
-  defp move_executable(priv_dir, target) do
+  defp move_executable(target) do
     target_executable =
       case target do
-        nil -> "target/release/rambo"
+        :custom -> "target/release/rambo"
         @windows -> "target/#{@windows}/release/rambo.exe"
         target -> "target/#{target}/release/rambo"
       end
 
-    source = Path.join(priv_dir, target_executable)
-    destination = Path.join(priv_dir, executable(target))
+    source = Path.join(@priv_dir, target_executable)
+    destination = Path.join(@priv_dir, @filenames[target])
     File.rename!(source, destination)
   end
 end

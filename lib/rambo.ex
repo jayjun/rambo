@@ -14,29 +14,7 @@ defmodule Rambo do
   @type args :: String.t() | [String.t()]
   @type result :: {:ok, t()} | {:error, t() | String.t()}
 
-  require Mix.Tasks.Compile.Rambo
-
-  import Mix.Tasks.Compile.Rambo, only: [platform_specific: 1]
-
   alias __MODULE__
-
-  # stop compilation unless suitable binary is found
-  platform_specific do
-    [mac: :ok, linux: :ok, windows: :ok]
-  else
-    raise """
-    Rambo did not ship pre-compiled binaries for your environment.
-    Install the Rust compiler and add the :rambo compiler to your mix.exs
-    so a binary can be prepared for you.
-
-        def project do
-          [
-            compilers: [:rambo] ++ Mix.compilers()
-          ]
-        end
-
-    """
-  end
 
   @doc ~S"""
   Runs `command`.
@@ -138,9 +116,8 @@ defmodule Rambo do
         {stdin, opts} = Keyword.pop(opts, :in)
         {envs, opts} = Keyword.pop(opts, :env)
         {current_dir, _opts} = Keyword.pop(opts, :cd)
-        executable = Mix.Tasks.Compile.Rambo.executable()
+        rambo = Mix.Tasks.Compile.Rambo.find_rambo()
 
-        rambo = Path.join(:code.priv_dir(:rambo), executable)
         port = Port.open({:spawn, rambo}, [:binary, :exit_status, {:packet, 4}])
         send_command(port, command)
 

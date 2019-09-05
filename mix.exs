@@ -11,6 +11,7 @@ defmodule Rambo.MixProject do
       elixir: "~> 1.9",
       name: "Rambo",
       description: "Run your command. Send EOF. Get output.",
+      compilers: Mix.compilers() ++ [:rambo],
       deps: deps(),
       package: [
         exclude_patterns: ["priv/target"],
