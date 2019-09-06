@@ -4,7 +4,7 @@ defmodule Rambo do
              |> Enum.drop(2)
              |> Enum.join("\n")
 
-  defstruct status: 0, out: "", err: ""
+  defstruct status: nil, out: "", err: ""
 
   @type t :: %__MODULE__{
           status: integer(),
@@ -37,7 +37,7 @@ defmodule Rambo do
   ## Examples
 
       iex> Rambo.run("echo")
-      {:ok, %Rambo{status: 0, out: "\n", err: ""}}
+      {:ok, %Rambo{out: "\n", status: 0, err: ""}}
 
   """
   @spec run(command :: String.t() | result()) :: result()
@@ -53,13 +53,13 @@ defmodule Rambo do
   ## Examples
 
       iex> Rambo.run("echo", "john")
-      {:ok, %Rambo{out: "john\n"}}
+      {:ok, %Rambo{out: "john\n", status: 0}}
 
       iex> Rambo.run("echo", ["-n", "john"])
-      {:ok, %Rambo{out: "john"}}
+      {:ok, %Rambo{out: "john", status: 0}}
 
       iex> Rambo.run("cat", in: "john")
-      {:ok, %Rambo{out: "john"}}
+      {:ok, %Rambo{out: "john", status: 0}}
 
   """
   @spec run(command :: String.t() | result, args_or_opts :: args() | Keyword.t()) :: result()
@@ -97,10 +97,10 @@ defmodule Rambo do
   ## Examples
 
       iex> Rambo.run("/bin/sh", ["-c", "echo $JOHN"], env: %{"JOHN" => "rambo"})
-      {:ok, %Rambo{out: "rambo\n"}}
+      {:ok, %Rambo{out: "rambo\n", status: 0}}
 
       iex> Rambo.run("echo", "rambo", log: &IO.inspect/1)
-      {:ok, %Rambo{out: "rambo\n"}}
+      {:ok, %Rambo{out: "rambo\n", status: 0}}
 
   """
   @spec run(command :: String.t(), args :: args(), opts :: Keyword.t()) :: result()
@@ -164,9 +164,9 @@ defmodule Rambo do
     :current_dir,
     :eot,
     :error,
-    :exit_status,
     :stdout,
-    :stderr
+    :stderr,
+    :exit_status
   ]
 
   for {message, index} <- Enum.with_index(@messages) do
@@ -211,16 +211,6 @@ defmodule Rambo do
         Port.close(port)
         {:error, message}
 
-      {^port, {:data, @exit_status <> <<exit_status::32>>}} ->
-        result = %{result | status: exit_status}
-        Port.close(port)
-
-        if result.status == 0 do
-          {:ok, result}
-        else
-          {:error, result}
-        end
-
       {^port, {:data, @stdout <> stdout}} ->
         maybe_log(:stdout, stdout, log)
         result = Map.put(result, :out, result.out <> stdout)
@@ -230,6 +220,16 @@ defmodule Rambo do
         maybe_log(:stderr, stderr, log)
         result = Map.put(result, :err, result.err <> stderr)
         receive_result(port, result, log)
+
+      {^port, {:data, @exit_status <> <<exit_status::32>>}} ->
+        Port.close(port)
+        result = %{result | status: exit_status}
+
+        if result.status == 0 do
+          {:ok, result}
+        else
+          {:error, result}
+        end
 
       {^port, {:exit_status, exit_status}} ->
         {:error, "rambo exited with #{exit_status}"}
