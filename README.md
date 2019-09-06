@@ -115,7 +115,7 @@ Add `rambo` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:rambo, "~> 0.1"}
+    {:rambo, "~> 0.2"}
   ]
 end
 ```
