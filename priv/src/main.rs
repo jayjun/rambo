@@ -1,6 +1,7 @@
 use std::collections::HashMap;
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::process;
+use std::thread;
 
 enum Message {
     Command(String),
@@ -20,11 +21,11 @@ const ARG: u8 = 1;
 const STDIN: u8 = 2;
 const ENV: u8 = 3;
 const CURRENT_DIR: u8 = 4;
-const ERROR: u8 = 5;
-const EXIT_STATUS: u8 = 6;
-const STDOUT: u8 = 7;
-const STDERR: u8 = 8;
-const EOT: u8 = 9;
+const EOT: u8 = 5;
+const ERROR: u8 = 6;
+const EXIT_STATUS: u8 = 7;
+const STDOUT: u8 = 8;
+const STDERR: u8 = 9;
 
 impl Message {
     fn from_bytes(bytes: Vec<u8>) -> Message {
@@ -58,9 +59,8 @@ impl Message {
         match self {
             Message::Error(message) => Message::to_vec(ERROR, message.as_bytes()),
             Message::ExitStatus(code) => Message::to_vec(EXIT_STATUS, &code.to_be_bytes()),
-            Message::Stdout(stdout) => Message::to_vec(STDOUT, stdout.as_slice()),
-            Message::Stderr(stderr) => Message::to_vec(STDERR, stderr.as_slice()),
-            Message::EOT => Message::to_vec(EOT, &[]),
+            Message::Stdout(buffer) => Message::to_vec(STDOUT, buffer.as_slice()),
+            Message::Stderr(buffer) => Message::to_vec(STDERR, buffer.as_slice()),
             _ => panic!("to_bytes() only implemented for outgoing messages"),
         }
     }
@@ -86,33 +86,59 @@ impl Message {
 
     fn write_to_erlang(&self) -> io::Result<()> {
         let buffer = self.to_bytes();
-        io::stdout().write_all(&buffer)
+        io::stdout().write_all(&buffer)?;
+        io::stdout().flush()
     }
 
-    fn send_to_erlang(result: io::Result<process::Output>) -> io::Result<()> {
-        match result {
-            Ok(output) => Message::send_output_to_erlang(output),
-            Err(error) => Message::send_error_to_erlang(error),
+    fn stream_to_erlang<R, F>(mut buffer_reader: io::BufReader<R>, write_all: F) -> io::Result<()>
+    where
+        R: io::Read,
+        F: Fn(Vec<u8>) -> io::Result<()>,
+    {
+        let mut buffer = vec![];
+
+        while let Ok(bytes_read) = buffer_reader.read_until(b'\n', &mut buffer) {
+            if bytes_read == 0 {
+                break;
+            }
+            write_all(buffer.clone())?;
+            buffer.clear();
         }
-    }
 
-    fn send_output_to_erlang(output: process::Output) -> io::Result<()> {
-        let exit_status = output.status.code().expect("Child should have exit status");
-        let messages = [
-            Message::ExitStatus(exit_status),
-            Message::Stdout(output.stdout),
-            Message::Stderr(output.stderr),
-        ];
-        for message in messages.iter() {
-            message.write_to_erlang()?;
-        }
-        Message::EOT.write_to_erlang()
+        Ok(())
     }
+}
 
-    fn send_error_to_erlang(error: io::Error) -> io::Result<()> {
-        let message = Message::Error(format!("{}", error));
-        message.write_to_erlang()?;
-        Message::EOT.write_to_erlang()
+trait Sendable {
+    fn send_to_erlang(self) -> io::Result<()>;
+}
+
+impl Sendable for io::Result<process::ExitStatus> {
+    fn send_to_erlang(self) -> io::Result<()> {
+        let message = match self {
+            Ok(exit_status) => {
+                let exit_status = exit_status.code().expect("Child should have exit status");
+                Message::ExitStatus(exit_status)
+            }
+            Err(error) => Message::Error(format!("{}", error)),
+        };
+        message.write_to_erlang()
+    }
+}
+
+impl Sendable for process::ChildStdout {
+    fn send_to_erlang(self) -> io::Result<()> {
+        Message::stream_to_erlang(io::BufReader::new(self), |buffer| {
+            Message::Stdout(buffer).write_to_erlang()
+        })
+    }
+}
+
+impl Sendable for process::ChildStderr {
+    fn send_to_erlang(self) -> io::Result<()> {
+        Message::stream_to_erlang(io::BufReader::new(self), |buffer| {
+            Message::Stderr(buffer).write_to_erlang()
+        })
     }
 }
 
@@ -148,7 +174,7 @@ impl Command {
         }
     }
 
-    fn run(&self) -> io::Result<process::Output> {
+    fn run(&self) -> io::Result<process::ExitStatus> {
         let command = self.command.as_ref().expect("Rambo requires a command!");
         let mut command = process::Command::new(command);
         command
@@ -172,7 +198,19 @@ impl Command {
             child.stdin.take().ok_or(error)?.write_all(stdin)?;
         }
 
-        child.wait_with_output()
+        drop(child.stdin.take());
+
+        let mut handles = Vec::new();
+
+        let error = io::Error::new(io::ErrorKind::Other, "Child stdout cannot be read");
+        let stdout = child.stdout.take().ok_or(error)?;
+        handles.push(thread::spawn(move || stdout.send_to_erlang()));
+
+        let error = io::Error::new(io::ErrorKind::Other, "Child stderr cannot be read");
+        let stderr = child.stderr.take().ok_or(error)?;
+        handles.push(thread::spawn(move || stderr.send_to_erlang()));
+
+        child.wait()
     }
 }
 
@@ -185,9 +223,7 @@ fn main() {
     while let Ok(message) = Message::read_from_erlang() {
         match message {
             Message::EOT => {
-                let result = command.run();
-                let _ = Message::send_to_erlang(result);
-                break;
+                let _ = command.run().send_to_erlang();
             }
             message => command.add(message),
         }

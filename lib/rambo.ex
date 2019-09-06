@@ -89,10 +89,17 @@ defmodule Rambo do
     * `:in` - pipe as standard input
     * `:cd` - the directory to run the command in
     * `:env` - map or list of tuples containing environment key-value as strings
+    * `:log` - stream standard output or standard error to console or a
+      function. May be `:stdout`, `:stderr`, `true` for both, `false` for
+      neither or a function with one arity. The function is sent
+      `{:stdout, output}` and `{:stderr, error}` tuples. Defaults to `:stderr`.
 
   ## Examples
 
       iex> Rambo.run("/bin/sh", ["-c", "echo $JOHN"], env: %{"JOHN" => "rambo"})
+      {:ok, %Rambo{out: "rambo\n"}}
+
+      iex> Rambo.run("echo", "rambo", log: &IO.inspect/1)
       {:ok, %Rambo{out: "rambo\n"}}
 
   """
@@ -115,9 +122,17 @@ defmodule Rambo do
       command ->
         {stdin, opts} = Keyword.pop(opts, :in)
         {envs, opts} = Keyword.pop(opts, :env)
-        {current_dir, _opts} = Keyword.pop(opts, :cd)
-        rambo = Mix.Tasks.Compile.Rambo.find_rambo()
+        {current_dir, opts} = Keyword.pop(opts, :cd)
+        {log, _opts} = Keyword.pop(opts, :log, :stderr)
 
+        log =
+          case log do
+            log when is_function(log) -> log
+            true -> [:stdout, :stderr]
+            _ -> [log]
+          end
+
+        rambo = Mix.Tasks.Compile.Rambo.find_rambo()
         port = Port.open({:spawn, rambo}, [:binary, :exit_status, {:packet, 4}])
         send_command(port, command)
 
@@ -127,7 +142,7 @@ defmodule Rambo do
         if current_dir, do: send_current_dir(port, current_dir)
 
         run_command(port)
-        receive_result(port, %Rambo{})
+        receive_result(port, %Rambo{}, log)
     end
   end
 
@@ -147,11 +162,11 @@ defmodule Rambo do
     :stdin,
     :env,
     :current_dir,
+    :eot,
     :error,
     :exit_status,
     :stdout,
-    :stderr,
-    :eot
+    :stderr
   ]
 
   for {message, index} <- Enum.with_index(@messages) do
@@ -190,22 +205,14 @@ defmodule Rambo do
     Port.command(port, @eot)
   end
 
-  defp receive_result(port, result) do
+  defp receive_result(port, result, log) do
     receive do
       {^port, {:data, @error <> message}} ->
         Port.close(port)
         {:error, message}
 
       {^port, {:data, @exit_status <> <<exit_status::32>>}} ->
-        receive_result(port, %{result | status: exit_status})
-
-      {^port, {:data, @stdout <> stdout}} ->
-        receive_result(port, %{result | out: stdout})
-
-      {^port, {:data, @stderr <> stderr}} ->
-        receive_result(port, %{result | err: stderr})
-
-      {^port, {:data, @eot}} ->
+        result = %{result | status: exit_status}
         Port.close(port)
 
         if result.status == 0 do
@@ -214,8 +221,34 @@ defmodule Rambo do
           {:error, result}
         end
 
+      {^port, {:data, @stdout <> stdout}} ->
+        maybe_log(:stdout, stdout, log)
+        result = Map.put(result, :out, result.out <> stdout)
+        receive_result(port, result, log)
+
+      {^port, {:data, @stderr <> stderr}} ->
+        maybe_log(:stderr, stderr, log)
+        result = Map.put(result, :err, result.err <> stderr)
+        receive_result(port, result, log)
+
       {^port, {:exit_status, exit_status}} ->
         {:error, "rambo exited with #{exit_status}"}
+    end
+  end
+
+  defp maybe_log(to, output, log) when is_function(log) do
+    log.({to, output})
+  end
+
+  defp maybe_log(to, output, log) do
+    if to in log do
+      device =
+        case to do
+          :stdout -> :standard_io
+          :stderr -> :standard_error
+        end
+
+      :io.put_chars(device, output)
     end
   end
 end

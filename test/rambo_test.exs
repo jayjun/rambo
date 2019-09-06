@@ -32,4 +32,27 @@ defmodule RamboTest do
     assert {:ok, %Rambo{}} = result = Rambo.run("echo", "rambo")
     assert {:ok, %{out: "rambo\n"}} = result |> Rambo.run("cat") |> Rambo.run("cat")
   end
+
+  defmodule Bag do
+    use Agent
+
+    def start_link do
+      Agent.start_link(fn -> [] end, name: __MODULE__)
+    end
+
+    def put(log) do
+      Agent.update(__MODULE__, &[log | &1])
+    end
+
+    def look do
+      Agent.get(__MODULE__, &Enum.reverse/1)
+    end
+  end
+
+  test "redirecting logs" do
+    Bag.start_link()
+    Rambo.run("echo", ["-n", "rambo"], log: &Bag.put/1)
+    Rambo.run("printf", log: &Bag.put/1)
+    assert [{:stdout, "rambo"}, {:stderr, _} | _] = Bag.look()
+  end
 end
