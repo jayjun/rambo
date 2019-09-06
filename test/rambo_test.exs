@@ -55,4 +55,12 @@ defmodule RamboTest do
     Rambo.run("printf", log: &Bag.put/1)
     assert [{:stdout, "rambo"}, {:stderr, _} | _] = Bag.look()
   end
+
+  test "kill" do
+    task = Task.async(fn -> Rambo.run("cat") end)
+    assert Process.alive?(task.pid)
+
+    Rambo.kill(task.pid)
+    assert {:killed, %Rambo{status: nil}} = Task.await(task)
+  end
 end

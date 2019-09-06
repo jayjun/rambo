@@ -16,6 +16,27 @@ defmodule Rambo do
 
   alias __MODULE__
 
+  @doc """
+  Stop by killing your command.
+
+  Pass the `pid` of the process that called `run/1`. That process will return
+  with `{:killed, %Rambo{}}` with results accumulated thus far.
+
+  ## Example
+
+      iex> task = Task.async(fn ->
+      ...>   Rambo.run("cat")
+      ...> end)
+      iex> Rambo.kill(task.pid)
+      iex> Task.await(task)
+      {:killed, %Rambo{status: nil}}
+
+  """
+  @spec kill(pid()) :: {:killed, t()}
+  def kill(pid) do
+    send(pid, :kill)
+  end
+
   @doc ~S"""
   Runs `command`.
 
@@ -91,8 +112,9 @@ defmodule Rambo do
     * `:env` - map or list of tuples containing environment key-value as strings
     * `:log` - stream standard output or standard error to console or a
       function. May be `:stdout`, `:stderr`, `true` for both, `false` for
-      neither or a function with one arity. The function is sent
-      `{:stdout, output}` and `{:stderr, error}` tuples. Defaults to `:stderr`.
+      neither, or a function with one arity. If a function is given, it will be
+      passed `{:stdout, output}` or `{:stderr, error}` tuples. Defaults to
+      `:stderr`.
 
   ## Examples
 
@@ -233,6 +255,10 @@ defmodule Rambo do
 
       {^port, {:exit_status, exit_status}} ->
         {:error, "rambo exited with #{exit_status}"}
+
+      :kill ->
+        Port.close(port)
+        {:killed, result}
     end
   end
 
