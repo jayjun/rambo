@@ -16,7 +16,18 @@ Rambo.run("ls") |> Rambo.run("sort") |> Rambo.run("head")
 {:ok, %Rambo{out: "bar\nbaz\nfoo\n"}}
 ```
 
-One mission, one function.
+Kill your command if it’s stuck and Rambo returns any gathered results.
+
+```elixir
+task = Task(fn ->
+  Rambo.run("cat")
+end)
+
+Rambo.kill(task.pid)
+
+Task.await(task)
+{:killed, %Rambo{out: "", status: nil}}
+```
 
 ## Why?
 
@@ -40,8 +51,8 @@ the shim exits.
 +-----------------+       stdout
 ```
 
-If the Erlang node stops during the command, the shim exits to avoid becoming an
-orphan (process leak) but not before the command finishes.
+If the Erlang node stops during the command, your command is killed and the shim
+exits to avoid creating orphans (process leak).
 
 Rambo does not start a pool of processes nor support bidirectional communication
 with your commands. It is intentionally kept simple and lightweight to run
@@ -78,24 +89,22 @@ separately to add this capability. Rambo ships with the required native
 binaries.
 
 Goon is written in Go, a multithreaded runtime with a garbage collector. To be
-as lightweight as possible, Rambo’s shim is written in Rust. Single threaded, no
+as lightweight as possible, Rambo’s shim is written in Rust. No
 garbage collector, no runtime overhead.
 
-Most importantly, Goon currently [leaks](https://github.com/alco/porcelain/issues/13)
-processes. This isn’t an intractable problem, in fact writing a new driver to
-replace Goon should fix it. But Porcelain appears to be
-[abandoned](https://github.com/alco/porcelain/issues/50) and I need this in
-production so effort went into creating Rambo.
+Most importantly, Porcelain currently [leaks](https://github.com/alco/porcelain/issues/13)
+processes. Writing a new driver to replace Goon should fix it, but Porcelain
+appears to be [abandoned](https://github.com/alco/porcelain/issues/50) so effort
+went into creating Rambo.
 
 ### erlexec
 
 [erlexec](https://github.com/saleyn/erlexec) is great if you want fine grain
 control over external programs.
 
-Each external OS process is mirrored as an
-Erlang process, so you get asynchronous and bidirectional communication. You can
-kill your OS processes with any signal or monitor them for termination, among
-many powerful features.
+Each external OS process is mirrored as an Erlang process, so you get
+asynchronous and bidirectional communication. You can kill your OS processes
+with any signal or monitor them for termination, among many powerful features.
 
 Choose erlexec if you want a kitchen sink solution.
 
@@ -112,21 +121,15 @@ end
 ```
 
 This package bundles macOS, Linux and Windows binaries (x86-64 architecture
-only).
+only). For other environments, install the Rust compiler or Rambo will not
+compile.
 
-For other environments, install the Rust compiler and add the `:rambo` compiler
-to `mix.exs`.
+To remove unused binaries, set `:purge` to `true` in your configuration.
 
 ```elixir
-def project do
-  [
-    compilers: [:rambo] ++ Mix.compilers()
-  ]
-end
+config :rambo,
+  purge: true
 ```
-
-Ideally the Rust compiler should never be required, but cross-compiling Rust is
-still a work in progress.
 
 ## Links
 
