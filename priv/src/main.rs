@@ -87,10 +87,10 @@ impl Message {
             .map(|_| Message::from_bytes(buffer))
     }
 
-    // Write to standard output can fail but don't handle it. Because the only
-    // sane way to handle this error is to notify Erlang, but we can't. Instead
-    // of failing silently, we can try to exit. But if the Erlang node isn't
-    // there, it means standard input has closed and we are exiting anyway.
+    // Write to standard output can fail but don’t handle it. Because the only
+    // sane way to handle this error is to notify Erlang, but we can’t. Instead
+    // of failing silently, we can exit upon error but if the Erlang node isn’t
+    // there, standard input should be closed and we will exit soon anyway.
     fn write_to_erlang(&self) {
         let buffer = self.to_bytes();
         if let Ok(()) = io::stdout().write_all(&buffer) {
@@ -224,10 +224,10 @@ impl Command {
 
         thread::spawn(move || {
             loop {
-                // Busy looping try_wait is not great. Using waitid to wait
-                // without reaping is better but Rust libc has not implemented
-                // the si_status field in siginfo_t so there is no way to get
-                // the child's exit status from waitid.
+                // Busy looping try_wait isn’t great. Using waitid to wait
+                // without reaping is better but Rust libc hasn’t implemented
+                // the si_status field in siginfo_t, so we can’t get the child’s
+                // exit status.
                 match child.try_wait() {
                     Ok(None) => {
                         // Child has not exited. Kill if allowed.
@@ -264,8 +264,8 @@ fn main() {
     let pair = Arc::new((Mutex::new(false), Condvar::new()));
 
     // Returns Err(std::io::ErrorKind::UnexpectedEof) when standard input is
-    // closed. This means the port is closed or Erlang node has stopped. So exit
-    // immediately to avoid becoming an orphan (i.e. process leak).
+    // closed. This means the port is closed or the Erlang node has stopped.
+    // Exit immediately to avoid becoming an orphan (i.e. process leak).
     while let Ok(message) = Message::read_from_erlang() {
         match message {
             Message::EOT => {
