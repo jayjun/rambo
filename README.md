@@ -2,31 +2,81 @@
 
 Ever stumped trying to get output from a port?
 
-Rambo has one mission. Start your program, pipe standard input,
+Rambo has one mission. Start your command, pipe standard input,
 **send EOF** and return with output.
 
+## Usage
+
 ```elixir
-Rambo.run("cat", in: "hello")
-{:ok, %Rambo{out: "hello"}}
-
-Rambo.run("echo", ["-n", "world"])
-{:ok, %Rambo{out: "world"}}
-
-Rambo.run("ls") |> Rambo.run("sort") |> Rambo.run("head")
-{:ok, %Rambo{out: "bar\nbaz\nfoo\n"}}
+iex> Rambo.run("echo")
+{:ok, %Rambo{status: 0, out: "\n", err: ""}}
 ```
 
-Kill your command if it’s stuck and Rambo returns any gathered results.
+If the command fails,
 
 ```elixir
-task = Task(fn ->
-  Rambo.run("cat")
-end)
+iex> Rambo.run("printf")
+{:error, %Rambo{status: 1, out: "", err: "usage: printf format [arguments ...]\n"}}
+```
 
-Rambo.kill(task.pid)
+Send standard input to your command.
 
-Task.await(task)
-{:killed, %Rambo{out: "", status: nil}}
+```elixir
+iex> Rambo.run("cat", in: "rambo")
+{:ok, %Rambo{status: 0, out: "rambo", err: ""}}
+```
+
+Pass arguments as a string or list of iodata.
+
+```elixir
+iex> Rambo.run("ls", "-la")
+iex> Rambo.run("ls", ["-l", "-a"])
+```
+
+Chain commands together. If one of them fails, the rest won’t be executed and
+the failing result is returned.
+
+```elixir
+iex> Rambo.run("ls") |> Rambo.run("sort") |> Rambo.run("head")
+```
+
+### Logging
+
+By default, Rambo streams standard error to the console as your command runs so
+you can spot errors before the command finishes.
+
+Change this behaviour with the `:log` option.
+
+```elixir
+iex> Rambo.run("ls", log: :stderr) # default
+iex> Rambo.run("ls", log: :stdout) # stream stdout only
+iex> Rambo.run("ls", log: true)    # stream both
+iex> Rambo.run("ls", log: false)   # don’t log output
+```
+
+You can stream logs to any function. It receives `{:stdout, binary}` and
+`{:stderr, binary}` tuples whenever output is produced.
+
+```elixir
+iex> Rambo.run("echo", log: &IO.inspect/1)
+{:stdout, "\n"}
+{:ok, %Rambo{status: 0, out: "\n", err: ""}}
+```
+
+### Kill
+
+If your command is stuck, kill your command from another process and Rambo
+returns with any gathered results so far.
+
+```elixir
+iex> task = Task.async(fn ->
+...>   Rambo.run("cat")
+...> end)
+
+iex> Rambo.kill(task.pid)
+
+iex> Task.await(task)
+{:killed, %Rambo{status: nil, out: "", err: ""}}
 ```
 
 ## Why?
@@ -76,6 +126,11 @@ Task.await(task)
 
 ## Comparisons
 
+Rambo is the lightest, easiest library to manage external commands. While small
+and focused, Rambo has some niceties not available elsewhere. You can
+[chain commands](#usage) and [easily stream](#logging) your command’s output to
+any function.
+
 ### System.cmd
 
 If you don’t need to pipe standard input to your external program, just use
@@ -121,8 +176,7 @@ end
 ```
 
 This package bundles macOS, Linux and Windows binaries (x86-64 architecture
-only). For other environments, install the Rust compiler or Rambo will not
-compile.
+only). For other environments, install the Rust compiler or Rambo won’t compile.
 
 To remove unused binaries, set `:purge` to `true` in your configuration.
 

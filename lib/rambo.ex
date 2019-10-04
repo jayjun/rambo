@@ -11,7 +11,7 @@ defmodule Rambo do
           out: String.t(),
           err: String.t()
         }
-  @type args :: String.t() | [String.t()]
+  @type args :: String.t() | [iodata()]
   @type result :: {:ok, t()} | {:error, t() | String.t()}
 
   alias __MODULE__
