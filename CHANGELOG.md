@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+### Fixes
+
+- Resolve priv directory at runtime
+
 ## 0.2.0
 
 ### Features
