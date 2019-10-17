@@ -7,8 +7,6 @@ defmodule Mix.Tasks.Compile.Rambo do
   @linux "x86_64-unknown-linux-musl"
   @windows "x86_64-pc-windows-gnu"
 
-  @priv_dir List.to_string(:code.priv_dir(:rambo))
-
   @filenames %{
     @mac => "rambo-mac",
     @linux => "rambo-linux",
@@ -35,7 +33,7 @@ defmodule Mix.Tasks.Compile.Rambo do
 
   @filename filename
   def find_rambo do
-    Path.join(@priv_dir, @filename)
+    Path.join(:code.priv_dir(:rambo), @filename)
   end
 
   def run(["bundled"]) do
@@ -59,13 +57,15 @@ defmodule Mix.Tasks.Compile.Rambo do
     :ok
   end
 
+  @compile_priv_dir "#{:code.priv_dir(:rambo)}"
+
   defp remove_unused_binaries(executable) do
     filename = Path.basename(executable)
 
     @filenames
     |> Enum.map(fn {_target, filename} -> filename end)
     |> Enum.reject(&(&1 == filename))
-    |> Enum.map(&Path.join(@priv_dir, &1))
+    |> Enum.map(&Path.join(@compile_priv_dir, &1))
     |> Enum.each(&File.rm/1)
   end
 
@@ -90,7 +90,7 @@ defmodule Mix.Tasks.Compile.Rambo do
         target -> ["build", "--release", "--target", target]
       end
 
-    case System.cmd("cargo", args, cd: @priv_dir) do
+    case System.cmd("cargo", args, cd: @compile_priv_dir) do
       {_output, 0} ->
         move_executable(target)
         :ok
@@ -104,8 +104,8 @@ defmodule Mix.Tasks.Compile.Rambo do
     tag = "rambo/" <> target
     build = ["build", "--tag", tag, "--file", "Dockerfile." <> target, "."]
 
-    with {_output, 0} <- System.cmd("docker", build, cd: @priv_dir),
-         {_output, 0} <- System.cmd("docker", ["run", "--volume", @priv_dir <> ":/app", tag]) do
+    with {_output, 0} <- System.cmd("docker", build, cd: @compile_priv_dir),
+         {_output, 0} <- System.cmd("docker", ["run", "--volume", @compile_priv_dir <> ":/app", tag]) do
       move_executable(target)
       :ok
     else
@@ -121,8 +121,8 @@ defmodule Mix.Tasks.Compile.Rambo do
         target -> "target/#{target}/release/rambo"
       end
 
-    source = Path.join(@priv_dir, target_executable)
-    destination = Path.join(@priv_dir, @filenames[target])
+    source = Path.join(@compile_priv_dir, target_executable)
+    destination = Path.join(@compile_priv_dir, @filenames[target])
     File.rename!(source, destination)
   end
 end
