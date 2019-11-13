@@ -109,7 +109,7 @@ defmodule Rambo do
 
   ## Options
 
-    * `:in` - pipe as standard input
+    * `:in` - pipe iodata as standard input
     * `:cd` - the directory to run the command in
     * `:env` - map or list of tuples containing environment key-value as strings
     * `:log` - stream standard output or standard error to console or a
@@ -198,7 +198,7 @@ defmodule Rambo do
   end
 
   defp send_command(port, command) do
-    Port.command(port, @command <> command)
+    Port.command(port, [@command, command])
   end
 
   defp send_arguments(port, args) when is_list(args) do
@@ -208,21 +208,21 @@ defmodule Rambo do
   end
 
   defp send_arguments(port, arg) when is_binary(arg) do
-    Port.command(port, @arg <> arg)
+    Port.command(port, [@arg, arg])
   end
 
   defp send_stdin(port, stdin) do
-    Port.command(port, @stdin <> stdin)
+    Port.command(port, [@stdin, stdin])
   end
 
   defp send_envs(port, envs) do
     for {name, value} <- envs do
-      Port.command(port, @env <> <<byte_size(name)::32>> <> name <> value)
+      Port.command(port, [@env, <<byte_size(name)::32>>, name, value])
     end
   end
 
   defp send_current_dir(port, current_dir) do
-    Port.command(port, @current_dir <> current_dir)
+    Port.command(port, [@current_dir, current_dir])
   end
 
   defp run_command(port) do
