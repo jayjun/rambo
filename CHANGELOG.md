@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2
+
+### Added
+
+- Support iodata as standard input
+
 ## 0.2.1
 
 ### Fixes
@@ -8,7 +14,7 @@
 
 ## 0.2.0
 
-### Features
+### Added
 
 - Stream command output with `:log` option
 - Stop command with `kill/1`
