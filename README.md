@@ -1,9 +1,6 @@
 # Rambo
 
-Ever stumped trying to get output from a port?
-
-Rambo has one mission. Start your command, pipe standard input,
-**send EOF** and return with output.
+Rambo is the simplest, lightest way to run external programs.
 
 ## Usage
 
@@ -126,10 +123,9 @@ Task.await(task)
 
 ## Comparisons
 
-Rambo is the lightest, easiest library to manage external commands. While small
-and focused, Rambo has some niceties not available elsewhere. You can
-[chain commands](#usage) and [easily stream](#logging) your command’s output to
-any function.
+While small and focused, Rambo has some niceties not available elsewhere. You
+can [chain commands](#usage) and [easily stream](#logging) your command’s output
+to any function.
 
 ### System.cmd
 
