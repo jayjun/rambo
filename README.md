@@ -148,6 +148,15 @@ processes. Writing a new driver to replace Goon should fix it, but Porcelain
 appears to be [abandoned](https://github.com/alco/porcelain/issues/50) so effort
 went into creating Rambo.
 
+### MuonTrap
+
+[MuonTrap](https://github.com/fhunleth/muontrap) is designed to run long-running
+external programs. You can attach the OS process to your supervision tree, and
+restart it if it crashes. Likewise if your Elixir process crashes, the OS
+process is terminated too.
+
+You can also limit CPU and memory usage on Linux through cgroups.
+
 ### erlexec
 
 [erlexec](https://github.com/saleyn/erlexec) is great if you want fine grain
