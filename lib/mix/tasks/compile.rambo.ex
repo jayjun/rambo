@@ -36,7 +36,7 @@ defmodule Mix.Tasks.Compile.Rambo do
     Path.join(:code.priv_dir(:rambo), @filename)
   end
 
-  def run(["bundled"]) do
+  def run(["all"]) do
     with :ok <- compile(@mac),
          :ok <- compile_in_docker(@linux),
          :ok <- compile_in_docker(@windows) do
@@ -46,12 +46,25 @@ defmodule Mix.Tasks.Compile.Rambo do
     end
   end
 
-  def run(_args) do
+  def run([]) do
     executable = find_rambo()
     unless File.exists?(executable), do: compile!()
 
     if Application.get_env(:rambo, :purge, false) do
       remove_unused_binaries(executable)
+    end
+
+    :ok
+  end
+
+  def run(platforms) do
+    for platform <- platforms do
+      case platform do
+        "mac" -> compile(@mac)
+        "linux" -> compile(@linux)
+        "windows" -> compile(@windows)
+        _ -> :ok
+      end
     end
 
     :ok
@@ -105,7 +118,8 @@ defmodule Mix.Tasks.Compile.Rambo do
     build = ["build", "--tag", tag, "--file", "Dockerfile." <> target, "."]
 
     with {_output, 0} <- System.cmd("docker", build, cd: @compile_priv_dir),
-         {_output, 0} <- System.cmd("docker", ["run", "--volume", @compile_priv_dir <> ":/app", tag]) do
+         {_output, 0} <-
+           System.cmd("docker", ["run", "--volume", @compile_priv_dir <> ":/app", tag]) do
       move_executable(target)
       :ok
     else
