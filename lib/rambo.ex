@@ -143,7 +143,7 @@ defmodule Rambo do
       {:error, reason} ->
         {:error, reason}
 
-      command ->
+      command when byte_size(command) > 0 ->
         {stdin, opts} = Keyword.pop(opts, :in)
         {envs, opts} = Keyword.pop(opts, :env)
         {current_dir, opts} = Keyword.pop(opts, :cd)
@@ -167,6 +167,9 @@ defmodule Rambo do
 
         run_command(port)
         receive_result(port, %Rambo{}, log)
+
+      command ->
+        raise ArgumentError, message: "invalid command '#{inspect(command)}'"
     end
   end
 
@@ -246,8 +249,11 @@ defmodule Rambo do
         receive_result(port, result, log)
 
       {^port, {:data, @exit_status <> <<exit_status::32>>}} ->
+        result = Map.put(result, :status, exit_status)
+        receive_result(port, result, log)
+
+      {^port, {:data, @eot}} ->
         Port.close(port)
-        result = %{result | status: exit_status}
 
         if result.status == 0 do
           {:ok, result}

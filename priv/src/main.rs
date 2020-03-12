@@ -1,10 +1,9 @@
+use futures::future::FutureExt;
 use std::collections::HashMap;
-use std::io::{self, BufRead, Read, Write};
-use std::process;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
-use std::time;
+use std::io::ErrorKind;
+use std::process::{ExitStatus, Stdio};
+use tokio::prelude::*;
+use tokio::process::{ChildStdin, Command};
 
 enum Message {
     Command(String),
@@ -12,11 +11,11 @@ enum Message {
     Stdin(Vec<u8>),
     Env(String, String),
     CurrentDir(String),
+    Eot,
     Error(String),
-    ExitStatus(i32),
     Stdout(Vec<u8>),
     Stderr(Vec<u8>),
-    EOT,
+    ExitStatus(i32),
 }
 
 const COMMAND: u8 = 0;
@@ -33,255 +32,210 @@ const EXIT_STATUS: u8 = 9;
 impl Message {
     fn from_bytes(bytes: Vec<u8>) -> Message {
         match bytes[0] {
-            COMMAND => Message::Command(std::str::from_utf8(&bytes[1..]).unwrap().to_string()),
-            ARG => Message::Arg(std::str::from_utf8(&bytes[1..]).unwrap().to_string()),
-            STDIN => Message::Stdin((&bytes[1..]).iter().cloned().collect()),
+            COMMAND => Message::Command(Message::string_from_bytes(&bytes[1..])),
+            ARG => Message::Arg(Message::string_from_bytes(&bytes[1..])),
+            STDIN => Message::Stdin(bytes[1..].to_vec()),
             ENV => {
                 let mut name_length: [u8; 4] = [0, 0, 0, 0];
                 name_length.copy_from_slice(&bytes[1..5]);
                 let name_length = u32::from_be_bytes(name_length) as usize;
                 let name_end = 5 + name_length;
-                let name: String = std::str::from_utf8(&bytes[5..name_end])
-                    .unwrap()
-                    .to_string();
-                let value: String = std::str::from_utf8(&bytes[name_end..]).unwrap().to_string();
+                let name = Message::string_from_bytes(&bytes[5..name_end]);
+                let value = Message::string_from_bytes(&bytes[name_end..]);
                 Message::Env(name, value)
             }
-            CURRENT_DIR => {
-                Message::CurrentDir(std::str::from_utf8(&bytes[1..]).unwrap().to_string())
-            }
-            EOT => Message::EOT,
-            message_type => panic!(
-                "from_bytes() received unexpected message type {}",
-                message_type
-            ),
+            CURRENT_DIR => Message::CurrentDir(Message::string_from_bytes(&bytes[1..])),
+            EOT => Message::Eot,
+            _ => panic!("unexpected message {:?}", bytes),
         }
+    }
+
+    fn string_from_bytes(bytes: &[u8]) -> String {
+        String::from_utf8(bytes.to_vec()).unwrap()
     }
 
     fn to_bytes(&self) -> Vec<u8> {
         match self {
+            Message::Eot => vec![0, 0, 0, 1, EOT],
             Message::Error(message) => Message::to_vec(ERROR, message.as_bytes()),
             Message::Stdout(buffer) => Message::to_vec(STDOUT, buffer.as_slice()),
             Message::Stderr(buffer) => Message::to_vec(STDERR, buffer.as_slice()),
             Message::ExitStatus(code) => Message::to_vec(EXIT_STATUS, &code.to_be_bytes()),
-            _ => panic!("to_bytes() only implemented for outgoing messages"),
+            _ => panic!("{} cannot be encoded to bytes", self),
         }
     }
 
     fn to_vec(message_type: u8, bytes: &[u8]) -> Vec<u8> {
-        let length: [u8; 4] = ((1 + bytes.len()) as u32).to_be_bytes();
-        let mut buffer: Vec<u8> = length.iter().cloned().collect();
+        let length = (1 + bytes.len()) as u32;
+        let mut buffer: Vec<u8> = length.to_be_bytes().to_vec();
         buffer.push(message_type);
         buffer.extend(bytes);
         buffer
     }
 
-    fn read_from_erlang() -> io::Result<Message> {
-        let mut length: [u8; 4] = [0, 0, 0, 0];
-        io::stdin().read_exact(&mut length)?;
-        let length = u32::from_be_bytes(length) as usize;
+    async fn read_from_erlang() -> io::Result<Message> {
+        let mut stdin = tokio::io::stdin();
+        let length = stdin.read_u32().await? as usize;
 
         let mut buffer: Vec<u8> = vec![0; length];
-        io::stdin()
-            .read_exact(&mut buffer)
-            .map(|_| Message::from_bytes(buffer))
+        stdin.read_exact(&mut buffer).await?;
+        Ok(Message::from_bytes(buffer))
     }
 
-    // Write to standard output can fail but don’t handle it. Because the only
-    // sane way to handle this error is to notify Erlang, but we can’t. Instead
-    // of failing silently, we can exit upon error but if the Erlang node isn’t
-    // there, standard input should be closed and we will exit soon anyway.
-    fn write_to_erlang(&self) {
-        let buffer = self.to_bytes();
-        if let Ok(()) = io::stdout().write_all(&buffer) {
-            let _ = io::stdout().flush();
-        };
-    }
-
-    fn stream_to_erlang<R, F>(mut buffer_reader: io::BufReader<R>, write_all: F)
-    where
-        R: io::Read,
-        F: Fn(Vec<u8>),
-    {
-        let mut buffer = vec![];
-
-        while let Ok(bytes_read) = buffer_reader.read_until(b'\n', &mut buffer) {
-            if bytes_read == 0 {
-                break;
+    async fn monitor_erlang() -> std::io::Error {
+        loop {
+            match Message::read_from_erlang().await {
+                Err(error) if error.kind() == ErrorKind::UnexpectedEof => return error,
+                _ => (),
             }
-            write_all(buffer.clone());
-            buffer.clear();
-        }
-    }
-}
-
-trait Sendable {
-    fn send_to_erlang(self);
-}
-
-impl Sendable for io::Result<()> {
-    fn send_to_erlang(self) {
-        if let Err(error) = self {
-            Message::Error(format!("{}", error)).write_to_erlang();
-        }
-    }
-}
-
-impl Sendable for io::Result<process::ExitStatus> {
-    fn send_to_erlang(self) {
-        match self {
-            Ok(exit_status) => {
-                if let Some(code) = exit_status.code() {
-                    Message::ExitStatus(code).write_to_erlang()
-                }
-            }
-            Err(error) => Message::Error(format!("{}", error)).write_to_erlang(),
-        };
-    }
-}
-
-impl Sendable for process::ChildStdout {
-    fn send_to_erlang(self) {
-        Message::stream_to_erlang(io::BufReader::new(self), |buffer| {
-            Message::Stdout(buffer).write_to_erlang();
-        });
-    }
-}
-
-impl Sendable for process::ChildStderr {
-    fn send_to_erlang(self) {
-        Message::stream_to_erlang(io::BufReader::new(self), |buffer| {
-            Message::Stderr(buffer).write_to_erlang();
-        });
-    }
-}
-
-struct Command {
-    command: Option<String>,
-    args: Vec<String>,
-    stdin: Option<Vec<u8>>,
-    envs: HashMap<String, String>,
-    current_dir: Option<String>,
-}
-
-impl Command {
-    fn new() -> Command {
-        Command {
-            command: None,
-            args: vec![],
-            stdin: None,
-            envs: HashMap::new(),
-            current_dir: None,
         }
     }
 
-    fn add(&mut self, message: Message) {
-        match message {
-            Message::Command(command) => self.command = Some(command),
-            Message::Arg(arg) => self.args.push(arg),
-            Message::Stdin(stdin) => self.stdin = Some(stdin),
-            Message::Env(name, value) => {
-                self.envs.insert(name, value);
-            }
-            Message::CurrentDir(current_dir) => self.current_dir = Some(current_dir),
-            _ => (),
-        }
+    async fn write_to_erlang(&self) {
+        let mut stdout = tokio::io::stdout();
+        stdout
+            .write_all(&self.to_bytes())
+            .await
+            .expect("failed to write to erlang");
+        stdout.flush().await.expect("failed to flush to erlang");
     }
 
-    fn run(&mut self, kill: Arc<AtomicBool>, pair: Arc<(Mutex<bool>, Condvar)>) -> io::Result<()> {
-        let command = self.command.as_ref().expect("Rambo requires a command!");
-        let mut command = process::Command::new(command);
-        command
-            .args(self.args.clone())
-            .envs(self.envs.clone())
-            .stdout(process::Stdio::piped())
-            .stderr(process::Stdio::piped());
-
-        if self.stdin.is_some() {
-            command.stdin(process::Stdio::piped());
+    async fn stream_to_child(mut stdin: ChildStdin, input: Option<Vec<u8>>) -> io::Result<()> {
+        if let Some(input) = input {
+            stdin.write_all(&input.as_slice()).await?;
+            stdin.flush().await?;
         }
-
-        if let Some(current_dir) = self.current_dir.as_ref() {
-            command.current_dir(current_dir);
-        }
-
-        let mut child = command.spawn()?;
-
-        if let Some(stdin) = self.stdin.as_ref() {
-            let error = io::Error::new(io::ErrorKind::Other, "Child stdin cannot be opened");
-            child.stdin.take().ok_or(error)?.write_all(stdin)?;
-        }
-
-        drop(child.stdin.take());
-
-        let error = io::Error::new(io::ErrorKind::Other, "Child stdout cannot be read");
-        let stdout = child.stdout.take().ok_or(error)?;
-        thread::spawn(move || stdout.send_to_erlang());
-
-        let error = io::Error::new(io::ErrorKind::Other, "Child stderr cannot be read");
-        let stderr = child.stderr.take().ok_or(error)?;
-        thread::spawn(move || stderr.send_to_erlang());
-
-        thread::spawn(move || {
-            loop {
-                // Busy looping try_wait isn’t great. Using waitid to wait
-                // without reaping is better but Rust libc hasn’t implemented
-                // the si_status field in siginfo_t, so we can’t get the child’s
-                // exit status.
-                match child.try_wait() {
-                    Ok(None) => {
-                        // Child has not exited. Kill if allowed.
-                        if kill.load(Ordering::Relaxed) {
-                            let _ = child.kill();
-                        }
-                        thread::sleep(time::Duration::from_millis(1));
-                    }
-                    Ok(Some(exit_status)) => {
-                        Ok(exit_status).send_to_erlang();
-                        break;
-                    }
-                    Err(error) => {
-                        let error: io::Result<process::ExitStatus> = Err(error);
-                        error.send_to_erlang();
-                        break;
-                    }
-                }
-            }
-
-            let &(ref exited, ref condvar) = &*pair;
-            let mut exited = exited.lock().unwrap();
-            *exited = true;
-            condvar.notify_all();
-        });
-
         Ok(())
     }
+
+    async fn stream_to_erlang<S, F>(mut stream: S, create_message: F) -> io::Result<()>
+    where
+        S: AsyncRead,
+        F: Fn(Vec<u8>) -> Message,
+    {
+        let mut buffer = vec![];
+        while stream.read_buf(&mut buffer).await? > 0 {
+            let message = create_message(buffer.clone());
+            message.write_to_erlang().await;
+            buffer.clear();
+        }
+        Ok(())
+    }
+
+    async fn send_error_to_erlang(error: std::io::Error) {
+        if error.kind() != ErrorKind::UnexpectedEof {
+            let message = format!("{}", error);
+            let _ = Message::Error(message).write_to_erlang();
+        }
+    }
 }
 
-fn main() {
-    let mut command = Command::new();
-    let kill = Arc::new(AtomicBool::new(false));
-    let pair = Arc::new((Mutex::new(false), Condvar::new()));
+impl std::fmt::Display for Message {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let name = match self {
+            Message::Command(_) => "COMMAND",
+            Message::Arg(_) => "ARG",
+            Message::Stdin(_) => "STDIN",
+            Message::Env(_, _) => "ENV",
+            Message::CurrentDir(_) => "CURRENT_DIR",
+            Message::Eot => "EOT",
+            Message::Error(_) => "ERROR",
+            Message::Stdout(_) => "STDOUT",
+            Message::Stderr(_) => "STDERR",
+            Message::ExitStatus(_) => "EXIT_STATUS",
+        };
+        write!(formatter, "{}", name)
+    }
+}
 
-    // Returns Err(std::io::ErrorKind::UnexpectedEof) when standard input is
-    // closed. This means the port is closed or the Erlang node has stopped.
-    // Exit immediately to avoid becoming an orphan (i.e. process leak).
-    while let Ok(message) = Message::read_from_erlang() {
-        match message {
-            Message::EOT => {
-                command.run(kill.clone(), pair.clone()).send_to_erlang();
+async fn receive_command() -> io::Result<(Command, Option<Vec<u8>>)> {
+    let mut program: Option<String> = None;
+    let mut args: Vec<String> = vec![];
+    let mut stdin: Option<Vec<u8>> = None;
+    let mut envs: HashMap<String, String> = HashMap::new();
+    let mut current_dir: Option<String> = None;
+
+    loop {
+        match Message::read_from_erlang().await? {
+            Message::Command(string) => program = Some(string),
+            Message::Arg(string) => args.push(string),
+            Message::Stdin(bytes) => stdin = Some(bytes),
+            Message::Env(name, value) => {
+                envs.insert(name, value);
             }
-            message => command.add(message),
+            Message::CurrentDir(string) => current_dir = Some(string),
+            Message::Eot => break,
+            message => panic!("unexpected message {}", message),
         }
     }
 
-    // Allow kill
-    kill.swap(true, Ordering::Relaxed);
+    let mut command = Command::new(program.expect("command required"));
+    command
+        .args(args)
+        .envs(envs)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
 
-    // Wait for child to exit
-    let &(ref exited, ref condvar) = &*pair;
-    let mut exited = exited.lock().unwrap();
-    while !*exited {
-        exited = condvar.wait(exited).unwrap();
+    if let Some(current_dir) = current_dir {
+        command.current_dir(current_dir);
     }
+    Ok((command, stdin))
+}
+
+async fn run_command(mut command: Command, input: Option<Vec<u8>>) -> io::Result<ExitStatus> {
+    let monitor = Message::monitor_erlang().fuse();
+    let mut monitor = Box::pin(monitor);
+
+    let mut child = command.spawn().expect("failed to spawn child");
+
+    let stdin = child.stdin.take().expect("failed to open child stdin");
+    let stdin = Message::stream_to_child(stdin, input).fuse();
+    let mut stdin = Box::pin(stdin);
+
+    let stdout = child.stdout.take().expect("failed to open child stdout");
+    let stdout = Message::stream_to_erlang(stdout, Message::Stdout).fuse();
+    let mut stdout = Box::pin(stdout);
+
+    let stderr = child.stderr.take().expect("failed to open child stderr");
+    let stderr = Message::stream_to_erlang(stderr, Message::Stderr).fuse();
+    let mut stderr = Box::pin(stderr);
+
+    let child = child.fuse();
+    let mut child = Box::pin(child);
+
+    let mut stdin_done = false;
+    let mut stdout_done = false;
+    let mut stderr_done = false;
+    let mut child_result: Option<io::Result<ExitStatus>> = None;
+
+    while !stdin_done || !stdout_done || !stderr_done || child_result.is_none() {
+        futures::select_biased! {
+            error = monitor => return Err(error),
+            result = stdin => stdin_done = true,
+            result = stdout => stdout_done = true,
+            result = stderr => stderr_done = true,
+            result = child => child_result = Some(result),
+        }
+    }
+
+    child_result.unwrap()
+}
+
+async fn run() -> io::Result<()> {
+    let (command, input) = receive_command().await?;
+    let status = run_command(command, input).await?;
+    if let Some(code) = status.code() {
+        Message::ExitStatus(code).write_to_erlang().await;
+    }
+    Ok(())
+}
+
+#[tokio::main(basic_scheduler)]
+async fn main() {
+    match run().await {
+        Ok(()) => Message::Eot.write_to_erlang().await,
+        Err(error) => Message::send_error_to_erlang(error).await,
+    };
 }
