@@ -113,10 +113,12 @@ defmodule Rambo do
     * `:cd` - the directory to run the command in
     * `:env` - map or list of tuples containing environment key-value as strings
     * `:log` - stream standard output or standard error to console or a
-      function. May be `:stdout`, `:stderr`, `true` for both, `false` for
-      neither, or a function with one arity. If a function is given, it will be
-      passed `{:stdout, output}` or `{:stderr, error}` tuples. Defaults to
-      `:stderr`.
+    function. May be `:stdout`, `:stderr`, `true` for both, `false` for
+    neither, or a function with one arity. If a function is given, it will be
+    passed `{:stdout, output}` or `{:stderr, error}` tuples. Defaults to
+    `:stderr`.
+    * `:timeout` - kills command after timeout in milliseconds. Defaults to no
+    timeout.
 
   ## Examples
 
@@ -147,7 +149,8 @@ defmodule Rambo do
         {stdin, opts} = Keyword.pop(opts, :in)
         {envs, opts} = Keyword.pop(opts, :env)
         {current_dir, opts} = Keyword.pop(opts, :cd)
-        {log, _opts} = Keyword.pop(opts, :log, :stderr)
+        {log, opts} = Keyword.pop(opts, :log, :stderr)
+        {timeout, _opts} = Keyword.pop(opts, :timeout)
 
         log =
           case log do
@@ -164,6 +167,10 @@ defmodule Rambo do
         if stdin, do: send_stdin(port, stdin)
         if envs, do: send_envs(port, envs)
         if current_dir, do: send_current_dir(port, current_dir)
+
+        if is_integer(timeout) do
+          Process.send_after(self(), :kill, timeout)
+        end
 
         run_command(port)
         receive_result(port, %Rambo{}, log)
