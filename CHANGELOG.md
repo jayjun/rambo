@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.3.0
+
 ### Added
 
 - Add option to kill command after timeout

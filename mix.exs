@@ -1,7 +1,7 @@
 defmodule Rambo.MixProject do
   use Mix.Project
 
-  @version "0.2.2"
+  @version "0.3.0"
   @repo_url "https://github.com/jayjun/rambo"
 
   def project do
@@ -10,7 +10,7 @@ defmodule Rambo.MixProject do
       version: @version,
       elixir: "~> 1.9",
       name: "Rambo",
-      description: "Run your command. Send EOF. Get output.",
+      description: "Run your command. Send input. Get output.",
       compilers: Mix.compilers() ++ [:rambo],
       deps: deps(),
       package: [

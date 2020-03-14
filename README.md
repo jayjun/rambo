@@ -4,8 +4,12 @@
 
 Rambo is the easiest way to run external programs.
 
-Chain commands or capture logs to any function. The shim only runs asynchronous
-I/O on a single thread, so it’s very lightweight and efficient.
+- Works with programs that require EOF to produce output
+- Stream logs back to your app
+- Chain commands together
+- Kill stalled commands
+- Set timeout or run indefinitely
+- Powered by asynchronous I/O, incredibly efficient!
 
 ## Usage
 
@@ -151,7 +155,7 @@ Add `rambo` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:rambo, "~> 0.2"}
+    {:rambo, "~> 0.3"}
   ]
 end
 ```
