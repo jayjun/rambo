@@ -1,5 +1,7 @@
 ## Bug Fixes
 
+# 0.3.1
+
 - Fix wrong IO device name
 
 # 0.3.0

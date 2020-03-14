@@ -301,7 +301,7 @@ dependencies = [
 
 [[package]]
 name = "rambo"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "futures",
  "tokio",
