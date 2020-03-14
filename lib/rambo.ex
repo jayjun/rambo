@@ -281,13 +281,15 @@ defmodule Rambo do
     log.({to, output})
   end
 
-  defp maybe_log(:stdout, output, log) do
-    maybe_log(:stdio, output, log)
-  end
-
   defp maybe_log(to, output, log) do
     if to in log do
-      IO.write(to, output)
+      device =
+        case to do
+          :stdout -> :stdio
+          :stderr -> :stderr
+        end
+
+      IO.write(device, output)
     end
   end
 end
