@@ -5,6 +5,7 @@ use std::process::{ExitStatus, Stdio};
 use tokio::prelude::*;
 use tokio::process::{ChildStdin, Command};
 
+#[derive(Debug)]
 enum Message {
     Command(String),
     Arg(String),
@@ -79,7 +80,14 @@ impl Message {
 
         let mut buffer: Vec<u8> = vec![0; length];
         stdin.read_exact(&mut buffer).await?;
-        Ok(Message::from_bytes(buffer))
+
+        let message = Message::from_bytes(buffer);
+
+        if unsafe { DEBUG } {
+            eprint!("→ {:?}\r\n", message);
+        }
+
+        Ok(message)
     }
 
     async fn monitor_erlang() -> std::io::Error {
@@ -98,6 +106,10 @@ impl Message {
             .await
             .expect("failed to write to erlang");
         stdout.flush().await.expect("failed to flush to erlang");
+
+        if unsafe { DEBUG } {
+            eprint!("← {:?}\r\n", self);
+        }
     }
 
     async fn stream_to_child(mut stdin: ChildStdin, input: Option<Vec<u8>>) -> io::Result<()> {
@@ -232,8 +244,14 @@ async fn run() -> io::Result<()> {
     Ok(())
 }
 
+static mut DEBUG: bool = false;
+
 #[tokio::main(basic_scheduler)]
 async fn main() {
+    unsafe {
+        DEBUG = std::env::var_os("RAMBO_DEBUG").is_some();
+    }
+
     match run().await {
         Ok(()) => Message::Eot.write_to_erlang().await,
         Err(error) => Message::send_error_to_erlang(error).await,

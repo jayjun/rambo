@@ -153,7 +153,7 @@ defmodule Rambo do
           case log do
             log when is_function(log) -> log
             true -> [:stdout, :stderr]
-            _ -> [log]
+            log -> [log]
           end
 
         rambo = Mix.Tasks.Compile.Rambo.find_rambo()
@@ -274,15 +274,13 @@ defmodule Rambo do
     log.({to, output})
   end
 
+  defp maybe_log(:stdout, output, log) do
+    maybe_log(:stdio, output, log)
+  end
+
   defp maybe_log(to, output, log) do
     if to in log do
-      device =
-        case to do
-          :stdout -> :standard_io
-          :stderr -> :standard_error
-        end
-
-      :io.put_chars(device, output)
+      IO.write(to, output)
     end
   end
 end
