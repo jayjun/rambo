@@ -1,69 +1,51 @@
 # Rambo
 
-Rambo is the simplest, lightest way to run external programs.
+> One mission: Run your command. Send input. Get output.
+
+Rambo is the easiest way to run external programs.
+
+Chain commands or capture logs to any function. The shim only runs asynchronous
+I/O on a single thread, so it’s very lightweight and efficient.
 
 ## Usage
 
 ```elixir
 iex> Rambo.run("echo")
 {:ok, %Rambo{status: 0, out: "\n", err: ""}}
-```
 
-If the command fails,
-
-```elixir
-iex> Rambo.run("printf")
-{:error, %Rambo{status: 1, out: "", err: "usage: printf format [arguments ...]\n"}}
-```
-
-Send standard input to your command.
-
-```elixir
+# send standard input
 iex> Rambo.run("cat", in: "rambo")
-{:ok, %Rambo{status: 0, out: "rambo", err: ""}}
-```
 
-Pass arguments as a string or list of iodata.
-
-```elixir
-iex> Rambo.run("ls", "-la")
+# pass arguments
 iex> Rambo.run("ls", ["-l", "-a"])
-```
 
-Chain commands together. If one of them fails, the rest won’t be executed and
-the failing result is returned.
-
-```elixir
+# chain commands
 iex> Rambo.run("ls") |> Rambo.run("sort") |> Rambo.run("head")
+
+# set timeout
+iex> Rambo.run("find", "peace", timeout: 1981)
 ```
 
 ### Logging
 
-By default, Rambo streams standard error to the console as your command runs so
-you can spot errors before the command finishes.
-
-Change this behaviour with the `:log` option.
+Logs to standard error are printed by default, so errors are visible before your
+command finishes. Change this with the `:log` option.
 
 ```elixir
 iex> Rambo.run("ls", log: :stderr) # default
-iex> Rambo.run("ls", log: :stdout) # stream stdout only
-iex> Rambo.run("ls", log: true)    # stream both
+iex> Rambo.run("ls", log: :stdout) # log stdout only
+iex> Rambo.run("ls", log: true)    # log both stdout and stderr
 iex> Rambo.run("ls", log: false)   # don’t log output
-```
 
-You can stream logs to any function. It receives `{:stdout, binary}` and
-`{:stderr, binary}` tuples whenever output is produced.
-
-```elixir
+# or to any function
 iex> Rambo.run("echo", log: &IO.inspect/1)
-{:stdout, "\n"}
 {:ok, %Rambo{status: 0, out: "\n", err: ""}}
 ```
 
 ### Kill
 
-If your command is stuck, kill your command from another process and Rambo
-returns with any gathered results so far.
+Kill your command from another process, Rambo returns with any gathered results
+so far.
 
 ```elixir
 iex> task = Task.async(fn ->
@@ -80,15 +62,14 @@ iex> Task.await(task)
 
 Erlang ports do not work with programs that expect EOF to produce output. The
 only way to close standard input is to close the port, which also closes
-standard output preventing results from coming back to your app. This gotcha
+standard output, preventing results from coming back to your app. This gotcha
 is marked [Won’t Fix](https://bugs.erlang.org/browse/ERL-128).
 
-## Design
+### Design
 
-When Rambo is asked to run a command, it creates a port to a shim. Then the shim
-runs your command, closes standard input and waits for output. After your
-command exits, its output is returned to your app before the port is closed and
-the shim exits.
+When Rambo is asked to run a command, it starts a shim that spawns your command
+as a child. After writing to standard input, the file descriptor is closed while
+output is streamed back to your app.
 
 ```
 +-----------------+       stdin
@@ -98,14 +79,8 @@ the shim exits.
 +-----------------+       stdout
 ```
 
-If the Erlang node stops during the command, your command is killed and the shim
-exits to avoid creating orphans (process leak).
-
-Rambo does not start a pool of processes nor support bidirectional communication
-with your commands. It is intentionally kept simple and lightweight to run
-transient jobs with minimal overhead, such as calling a Python or Node script to
-transform some data. For more complicated use cases, see
-[other libraries](#comparisons) below.
+If your app exits prematurely, the child is automatically killed to prevent
+orphans.
 
 ## Caveats
 
@@ -115,7 +90,7 @@ Task.
 
 ```elixir
 task = Task.async(fn ->
-  Rambo.run("thingamabob")
+  Rambo.run("mission")
 end)
 
 Task.await(task)
@@ -123,9 +98,10 @@ Task.await(task)
 
 ## Comparisons
 
-While small and focused, Rambo has some niceties not available elsewhere. You
-can [chain commands](#usage) and [easily stream](#logging) your command’s output
-to any function.
+Rambo does not start a pool of processes nor support bidirectional communication
+with your commands. It is intentionally kept simple to run transient jobs with
+minimal overhead, such as calling a Python or Node script to transform some
+data. For more complicated use cases, see below.
 
 ### System.cmd
 
@@ -140,8 +116,8 @@ separately to add this capability. Rambo ships with the required native
 binaries.
 
 Goon is written in Go, a multithreaded runtime with a garbage collector. To be
-as lightweight as possible, Rambo’s shim is written in Rust. No
-garbage collector, no runtime overhead.
+as lightweight as possible, Rambo’s shim is written in Rust. Single-threaded, no
+garbage collection spikes, no runtime.
 
 Most importantly, Porcelain currently [leaks](https://github.com/alco/porcelain/issues/13)
 processes. Writing a new driver to replace Goon should fix it, but Porcelain
