@@ -1,7 +1,5 @@
 defmodule Rambo do
   @moduledoc File.read!("#{__DIR__}/../README.md")
-             |> String.replace("iex> ", "")
-             |> String.replace("...>", "")
              |> String.split("\n")
              |> Enum.drop(2)
              |> Enum.join("\n")

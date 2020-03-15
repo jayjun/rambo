@@ -14,20 +14,20 @@ Rambo is the easiest way to run external programs.
 ## Usage
 
 ```elixir
-iex> Rambo.run("echo")
+Rambo.run("echo")
 {:ok, %Rambo{status: 0, out: "\n", err: ""}}
 
 # send standard input
-iex> Rambo.run("cat", in: "rambo")
+Rambo.run("cat", in: "rambo")
 
 # pass arguments
-iex> Rambo.run("ls", ["-l", "-a"])
+Rambo.run("ls", ["-l", "-a"])
 
 # chain commands
-iex> Rambo.run("ls") |> Rambo.run("sort") |> Rambo.run("head")
+Rambo.run("ls") |> Rambo.run("sort") |> Rambo.run("head")
 
 # set timeout
-iex> Rambo.run("find", "peace", timeout: 1981)
+Rambo.run("find", "peace", timeout: 1981)
 ```
 
 ### Logging
@@ -36,14 +36,13 @@ Logs to standard error are printed by default, so errors are visible before your
 command finishes. Change this with the `:log` option.
 
 ```elixir
-iex> Rambo.run("ls", log: :stderr) # default
-iex> Rambo.run("ls", log: :stdout) # log stdout only
-iex> Rambo.run("ls", log: true)    # log both stdout and stderr
-iex> Rambo.run("ls", log: false)   # don’t log output
+Rambo.run("ls", log: :stderr) # default
+Rambo.run("ls", log: :stdout) # log stdout only
+Rambo.run("ls", log: true)    # log both stdout and stderr
+Rambo.run("ls", log: false)   # don’t log output
 
 # or to any function
-iex> Rambo.run("echo", log: &IO.inspect/1)
-{:ok, %Rambo{status: 0, out: "\n", err: ""}}
+Rambo.run("echo", log: &IO.inspect/1)
 ```
 
 ### Kill
@@ -52,13 +51,13 @@ Kill your command from another process, Rambo returns with any gathered results
 so far.
 
 ```elixir
-iex> task = Task.async(fn ->
-...>   Rambo.run("cat")
-...> end)
+task = Task.async(fn ->
+  Rambo.run("cat")
+end)
 
-iex> Rambo.kill(task.pid)
+Rambo.kill(task.pid)
 
-iex> Task.await(task)
+Task.await(task)
 {:killed, %Rambo{status: nil, out: "", err: ""}}
 ```
 
@@ -120,8 +119,8 @@ separately to add this capability. Rambo ships with the required native
 binaries.
 
 Goon is written in Go, a multithreaded runtime with a garbage collector. To be
-as lightweight as possible, Rambo’s shim is written in Rust. Single-threaded, no
-garbage collection spikes, no runtime.
+as lightweight as possible, Rambo’s shim is written in Rust using non-blocking,
+asynchronous I/O only. No garbage collection runtime, no latency spikes.
 
 Most importantly, Porcelain currently [leaks](https://github.com/alco/porcelain/issues/13)
 processes. Writing a new driver to replace Goon should fix it, but Porcelain
