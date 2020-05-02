@@ -4,7 +4,8 @@
 
 Rambo is the easiest way to run external programs.
 
-- Works with programs that require EOF to produce output
+- Run programs that require EOF to produce output
+- No additional installs or compilers required (Linux, macOS & Windows only)
 - Stream logs back to your app
 - Chain commands together
 - Kill stalled commands
@@ -108,7 +109,7 @@ data. For more complicated use cases, see below.
 
 ### System.cmd
 
-If you don’t need to pipe standard input to your external program, just use
+If you don’t need to pipe standard input or capture standard error, just use
 [`System.cmd`](https://hexdocs.pm/elixir/System.html#cmd/3).
 
 ### Porcelain
@@ -159,8 +160,8 @@ def deps do
 end
 ```
 
-This package bundles macOS, Linux and Windows binaries (x86-64 architecture
-only). For other environments, install the Rust compiler or Rambo won’t compile.
+Linux, macOS and Windows binaries are bundled (x86-64 architecture only). For
+other environments, install the Rust compiler or Rambo won’t compile.
 
 To remove unused binaries, set `:purge` to `true` in your configuration.
 
