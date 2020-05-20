@@ -171,7 +171,10 @@ defmodule Rambo do
         end
 
         run_command(port)
-        receive_result(port, %Rambo{}, log)
+
+        port
+        |> receive_result(%Rambo{}, log)
+        |> output_to_binary()
 
       command ->
         raise ArgumentError, message: "invalid command '#{inspect(command)}'"
@@ -245,12 +248,12 @@ defmodule Rambo do
 
       {^port, {:data, @stdout <> stdout}} ->
         maybe_log(:stdout, stdout, log)
-        result = Map.put(result, :out, result.out <> stdout)
+        result = Map.update(result, :out, [], &[&1 | stdout])
         receive_result(port, result, log)
 
       {^port, {:data, @stderr <> stderr}} ->
         maybe_log(:stderr, stderr, log)
-        result = Map.put(result, :err, result.err <> stderr)
+        result = Map.update(result, :err, [], &[&1 | stderr])
         receive_result(port, result, log)
 
       {^port, {:data, @exit_status <> <<exit_status::32>>}} ->
@@ -289,5 +292,21 @@ defmodule Rambo do
 
       IO.write(device, output)
     end
+  end
+
+  defp output_to_binary({reason, %Rambo{out: out, err: err} = result}) do
+    {reason, %{result | out: to_binary(out), err: to_binary(err)}}
+  end
+
+  defp output_to_binary(result) do
+    result
+  end
+
+  defp to_binary(iodata) when is_list(iodata) do
+    IO.iodata_to_binary(iodata)
+  end
+
+  defp to_binary(output) do
+    output
   end
 end
