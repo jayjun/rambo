@@ -1,6 +1,11 @@
 ## Bug Fixes
 
+- Fail gracefully if child standard I/O cannot open
+- Collect output using iolists
+
 # 0.3.1
+
+## Bug Fixes
 
 - Fix wrong IO device name
 
@@ -36,7 +41,7 @@
 - Stop command with `kill/1`
 - Add `:purge` setting to remove unused binaries
 
-## Bug fixes
+## Bug Fixes
 
 - Kill command if standard input to shim closes
 
