@@ -1,3 +1,5 @@
+# 0.3.2
+
 ## Bug Fixes
 
 - Fail gracefully if child standard I/O cannot open
