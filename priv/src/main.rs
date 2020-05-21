@@ -200,17 +200,26 @@ async fn run_command(mut command: Command, input: Option<Vec<u8>>) -> io::Result
     let monitor = Message::monitor_erlang().fuse();
     let mut monitor = Box::pin(monitor);
 
-    let mut child = command.spawn().expect("failed to spawn child");
+    let mut child = command.spawn()?;
 
-    let stdin = child.stdin.take().expect("failed to open child stdin");
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "failed to open child stdin"))?;
     let stdin = Message::stream_to_child(stdin, input).fuse();
     let mut stdin = Box::pin(stdin);
 
-    let stdout = child.stdout.take().expect("failed to open child stdout");
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "failed to open child stdout"))?;
     let stdout = Message::stream_to_erlang(stdout, Message::Stdout).fuse();
     let mut stdout = Box::pin(stdout);
 
-    let stderr = child.stderr.take().expect("failed to open child stderr");
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "failed to open child stderr"))?;
     let stderr = Message::stream_to_erlang(stderr, Message::Stderr).fuse();
     let mut stderr = Box::pin(stderr);
 
