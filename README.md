@@ -5,7 +5,8 @@
 Rambo is the easiest way to run external programs.
 
 - Run programs that require EOF to produce output
-- No additional installs or compilers required (Linux, macOS & Windows only)
+- No more zombies, even if the VM crashes! No scripts required!
+- No additional installs or compilers (Linux, macOS & Windows only)
 - Stream logs back to your app
 - Chain commands together
 - Kill stalled commands
@@ -102,7 +103,7 @@ Task.await(task)
 
 ## Comparisons
 
-Rambo does not start a pool of processes nor support bidirectional communication
+Rambo does not spawn any processes nor support bidirectional communication
 with your commands. It is intentionally kept simple to run transient jobs with
 minimal overhead, such as calling a Python or Node script to transform some
 data. For more complicated use cases, see below.
@@ -147,6 +148,19 @@ asynchronous and bidirectional communication. You can kill your OS processes
 with any signal or monitor them for termination, among many powerful features.
 
 Choose erlexec if you want a kitchen sink solution.
+
+### ExCmd
+
+[ExCmd](https://github.com/akash-akya/ex_cmd) can stream data with backpressure,
+wrapped in a convenient `Stream` API. Requires separate install of
+[Odu](https://github.com/akash-akya/odu). By the same author as
+[Exile](https://github.com/akash-akya/exile).
+
+### Exile
+
+[Exile](https://github.com/akash-akya/exile) is also focused on streaming like
+[ExCmd](https://github.com/akash-akya/ex_cmd) but implemented with NIFs so it
+does not require shims.
 
 ## Installation
 
