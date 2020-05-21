@@ -6,4 +6,4 @@ edition = "2018"
 
 [dependencies]
 tokio = { version = "0.2", features = ["io-std", "io-util", "macros", "process", "rt-core"] }
-futures = "0.3.4"
+futures = "0.3.5"

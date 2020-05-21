@@ -36,7 +36,7 @@ defmodule Rambo.MixProject do
 
   defp deps do
     [
-      {:ex_doc, "~> 0.21", only: [:docs], runtime: false}
+      {:ex_doc, "~> 0.22", only: [:docs], runtime: false}
     ]
   end
 end
