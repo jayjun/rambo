@@ -1,6 +1,6 @@
 # Rambo
 
-> One mission: Run your command. Send input. Get output.
+![](https://github.com/jayjun/clipboard/workflows/CI/badge.svg)
 
 Rambo is the easiest way to run external programs.
 

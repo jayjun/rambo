@@ -1,0 +1,21 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install OTP and Elixir
+        uses: actions/setup-elixir@v1
+        with:
+          elixir-version: "1.11.1"
+          otp-version: "23.1"
+
+      - run: mix deps.get
+      - run: mix deps.compile
+      - run: mix compile --warnings-as-errors
+      - run: mix format --check-formatted
