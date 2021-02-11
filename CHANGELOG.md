@@ -1,3 +1,5 @@
+# 0.3.3
+
 ## Bug Fixes
 
 - Fix typespec
