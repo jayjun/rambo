@@ -1,6 +1,6 @@
 [package]
 name = "rambo"
-version = "0.3.3"
+version = "0.3.4"
 authors = ["Tan Jay Jun"]
 edition = "2018"
 
