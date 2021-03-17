@@ -83,7 +83,7 @@ defmodule Rambo do
       {:ok, %Rambo{out: "john", status: 0}}
 
   """
-  @spec run(command :: String.t() | result, args_or_opts :: args() | Keyword.t()) :: result()
+  @spec run(command :: String.t() | result(), args_or_opts :: args() | Keyword.t()) :: result()
   def run(command, args_or_opts) do
     case command do
       {:ok, %{status: 0, out: out}} ->
@@ -127,7 +127,7 @@ defmodule Rambo do
       {:ok, %Rambo{out: "rambo\n", status: 0}}
 
   """
-  @spec run(command :: String.t(), args :: args(), opts :: Keyword.t()) :: result()
+  @spec run(command :: String.t() | result(), args :: args(), opts :: Keyword.t()) :: result()
   def run(command, args, opts) do
     case command do
       {:ok, %{out: out}} ->
@@ -290,7 +290,7 @@ defmodule Rambo do
           :stderr -> :stderr
         end
 
-      IO.write(device, output)
+      IO.binwrite(device, output)
     end
   end
 
