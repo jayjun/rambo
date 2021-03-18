@@ -166,14 +166,16 @@ defmodule Rambo do
         if envs, do: send_envs(port, envs)
         if current_dir, do: send_current_dir(port, current_dir)
 
-        if is_integer(timeout) do
-          Process.send_after(self(), :kill, timeout)
-        end
+        timer_ref =
+          if is_integer(timeout) do
+            Process.send_after(self(), :kill, timeout)
+          end
 
         run_command(port)
 
         port
         |> receive_result(%Rambo{}, log)
+        |> cancel_timer(timer_ref)
         |> output_to_binary()
 
       command ->
@@ -308,5 +310,12 @@ defmodule Rambo do
 
   defp to_binary(output) do
     output
+  end
+
+  defp cancel_timer(result, nil), do: result
+
+  defp cancel_timer(result, timer_ref) do
+    Process.cancel_timer(timer_ref)
+    result
   end
 end
