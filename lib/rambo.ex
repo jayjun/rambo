@@ -12,7 +12,7 @@ defmodule Rambo do
           err: String.t()
         }
   @type args :: String.t() | [iodata()] | nil
-  @type result :: {:ok, t()} | {:error, t() | String.t()}
+  @type result :: {:ok, t()} | {:error, t() | String.t()} | {:killed, t()}
 
   alias __MODULE__
 
