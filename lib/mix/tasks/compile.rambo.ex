@@ -4,11 +4,13 @@ defmodule Mix.Tasks.Compile.Rambo do
 
   # rust targets
   @mac "x86_64-apple-darwin"
+  @macarm "aarch64-apple-darwin"
   @linux "x86_64-unknown-linux-musl"
   @windows "x86_64-pc-windows-gnu"
 
   @filenames %{
     @mac => "rambo-mac",
+    @macarm => "rambo-macarm",
     @linux => "rambo-linux",
     @windows => "rambo.exe",
     :custom => "rambo"
@@ -16,28 +18,34 @@ defmodule Mix.Tasks.Compile.Rambo do
 
   @environment List.to_string(:erlang.system_info(:system_architecture))
 
-  filename =
+  target =
     cond do
       String.starts_with?(@environment, "x86_64-apple-darwin") ->
-        @filenames[@mac]
+        @mac
+
+      String.starts_with?(@environment, "aarch64-apple-darwin") ->
+        @macarm
 
       String.starts_with?(@environment, "x86_64") and String.contains?(@environment, "linux") ->
-        @filenames[@linux]
+        @linux
 
       @environment == "win32" ->
-        @filenames[@windows]
+        @windows
 
       true ->
-        @filenames.custom
+        :custom
     end
 
-  @filename filename
+  @target target
+  @filename @filenames[target]
+
   def find_rambo do
     Path.join(:code.priv_dir(:rambo), @filename)
   end
 
   def run(["all"]) do
     with :ok <- compile(@mac),
+         :ok <- compile(@macarm),
          :ok <- compile_in_docker(@linux),
          :ok <- compile_in_docker(@windows) do
       :ok
@@ -61,6 +69,7 @@ defmodule Mix.Tasks.Compile.Rambo do
     for platform <- platforms do
       case platform do
         "mac" -> compile(@mac)
+        "macarm" -> compile(@macarm)
         "linux" -> compile(@linux)
         "windows" -> compile(@windows)
         _ -> :ok
@@ -84,7 +93,7 @@ defmodule Mix.Tasks.Compile.Rambo do
 
   defp compile! do
     if System.find_executable("cargo") do
-      compile(:custom)
+      compile(@target)
     else
       raise """
       Rambo does not ship with binaries for your environment.
