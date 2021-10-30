@@ -48,3 +48,32 @@ jobs:
           mix deps.get
           mix test
 
+  test_windows:
+    name: Test on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Install Rust stable toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          target: x86_64-pc-windows-gnu
+          toolchain: stable
+          override: true
+
+      - name: Compile shim
+        run: |
+          cd priv && cargo build --release --target x86_64-pc-windows-gnu
+          copy target\x86_64-pc-windows-gnu\release\rambo.exe rambo.exe
+
+      - name: Install OTP and Elixir
+        uses: erlef/setup-elixir@v1
+        with:
+          otp-version: '24.1.3'
+          elixir-version: '1.12.3'
+
+      - name: Run tests
+        run: |
+          mix deps.get
+          mix test
+
