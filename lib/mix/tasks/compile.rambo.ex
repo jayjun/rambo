@@ -39,6 +39,7 @@ defmodule Mix.Tasks.Compile.Rambo do
 
   def run(["all"]) do
     with :ok <- compile(@mac),
+         :ok <- compile(@macm1),
          :ok <- compile_in_docker(@linux),
          :ok <- compile_in_docker(@windows) do
       :ok
