@@ -4,6 +4,7 @@ defmodule Mix.Tasks.Compile.Rambo do
 
   # rust targets
   @mac "x86_64-apple-darwin"
+  @macm1 "aarch64-apple-darwin"
   @linux "x86_64-unknown-linux-musl"
   @windows "x86_64-pc-windows-gnu"
 
@@ -18,7 +19,7 @@ defmodule Mix.Tasks.Compile.Rambo do
 
   filename =
     cond do
-      String.starts_with?(@environment, "x86_64-apple-darwin") ->
+      String.starts_with?(@environment, @mac) or String.starts_with?(@environment, @macm1) ->
         @filenames[@mac]
 
       String.starts_with?(@environment, "x86_64") and String.contains?(@environment, "linux") ->
