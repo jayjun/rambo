@@ -18,7 +18,7 @@ defmodule Mix.Tasks.Compile.Rambo do
 
   filename =
     cond do
-      String.starts_with?(@environment, "x86_64-apple-darwin") ->
+      String.starts_with?(@environment, ["x86_64-apple-darwin", "aarch64-apple-darwin"]) ->
         @filenames[@mac]
 
       String.starts_with?(@environment, "x86_64") and String.contains?(@environment, "linux") ->
