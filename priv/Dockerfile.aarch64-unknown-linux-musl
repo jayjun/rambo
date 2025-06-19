@@ -1,0 +1,6 @@
+FROM rustembedded/cross:aarch64-unknown-linux-musl
+
+WORKDIR /app
+
+COPY . /app
+CMD ["cargo", "build", "--release", "--target", "aarch64-unknown-linux-musl"]
