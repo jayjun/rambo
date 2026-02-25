@@ -2,8 +2,8 @@
 name = "rambo"
 version = "0.3.4"
 authors = ["Tan Jay Jun"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-tokio = { version = "0.2", features = ["io-std", "io-util", "macros", "process", "rt-core"] }
-futures = "0.3.5"
+tokio = { version = "1", features = ["io-std", "io-util", "macros", "process", "rt"] }
+futures = "0.3"
