@@ -2,7 +2,7 @@ use futures::future::FutureExt;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::process::{ExitStatus, Stdio};
-use tokio::prelude::*;
+use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{ChildStdin, Command};
 
 #[derive(Debug)]
@@ -114,7 +114,7 @@ impl Message {
 
     async fn stream_to_child(mut stdin: ChildStdin, input: Option<Vec<u8>>) -> io::Result<()> {
         if let Some(input) = input {
-            stdin.write_all(&input.as_slice()).await?;
+            stdin.write_all(input.as_slice()).await?;
             stdin.flush().await?;
         }
         Ok(())
@@ -122,14 +122,17 @@ impl Message {
 
     async fn stream_to_erlang<S, F>(mut stream: S, create_message: F) -> io::Result<()>
     where
-        S: AsyncRead,
+        S: AsyncRead + Unpin,
         F: Fn(Vec<u8>) -> Message,
     {
-        let mut buffer = vec![];
-        while stream.read_buf(&mut buffer).await? > 0 {
-            let message = create_message(buffer.clone());
+        let mut buffer = vec![0u8; 65536];
+        loop {
+            let n = stream.read(&mut buffer).await?;
+            if n == 0 {
+                break;
+            }
+            let message = create_message(buffer[..n].to_vec());
             message.write_to_erlang().await;
-            buffer.clear();
         }
         Ok(())
     }
@@ -223,7 +226,7 @@ async fn run_command(mut command: Command, input: Option<Vec<u8>>) -> io::Result
     let stderr = Message::stream_to_erlang(stderr, Message::Stderr).fuse();
     let mut stderr = Box::pin(stderr);
 
-    let child = child.fuse();
+    let child = child.wait().fuse();
     let mut child = Box::pin(child);
 
     let mut stdin_done = false;
@@ -234,9 +237,9 @@ async fn run_command(mut command: Command, input: Option<Vec<u8>>) -> io::Result
     while !stdin_done || !stdout_done || !stderr_done || child_result.is_none() {
         futures::select_biased! {
             error = monitor => return Err(error),
-            result = stdin => stdin_done = true,
-            result = stdout => stdout_done = true,
-            result = stderr => stderr_done = true,
+            _result = stdin => stdin_done = true,
+            _result = stdout => stdout_done = true,
+            _result = stderr => stderr_done = true,
             result = child => child_result = Some(result),
         }
     }
@@ -255,7 +258,7 @@ async fn run() -> io::Result<()> {
 
 static mut DEBUG: bool = false;
 
-#[tokio::main(basic_scheduler)]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     unsafe {
         DEBUG = std::env::var_os("RAMBO_DEBUG").is_some();
